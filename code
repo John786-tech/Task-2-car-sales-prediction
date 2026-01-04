@@ -1,0 +1,79 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import r2_score
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.compose import make_column_transformer
+from sklearn.pipeline import make_pipeline
+
+car = pd.read_csv('quikr_car.csv')
+
+car = car[car['year'].str.isnumeric()]
+car['year'] = car['year'].astype(int)
+car = car[car['Price'] != "Ask For Price"]
+car['Price'] = car['Price'].str.replace(',', '').astype(int)
+car['kms_driven'] = car['kms_driven'].str.split(' ').str.get(0).str.replace(',', '')
+car = car[car['kms_driven'].str.isnumeric()]
+car['kms_driven'] = car['kms_driven'].astype(int)
+car = car[~car['fuel_type'].isna()]
+car['name'] = car['name'].str.split().str.slice(0, 3).str.join(' ')
+car = car.reset_index(drop=True)
+
+X = car[['name', 'company', 'year', 'kms_driven', 'fuel_type']]
+y = car['Price']
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=433)
+
+ohe = OneHotEncoder()
+ohe.fit(X[['name', 'company', 'fuel_type']])
+column_trans = make_column_transformer(
+    (OneHotEncoder(categories=ohe.categories_), ['name', 'company', 'fuel_type']),
+    remainder='passthrough'
+)
+lr = LinearRegression()
+pipe = make_pipeline(column_trans, lr)
+pipe.fit(X_train, y_train)
+
+y_pred = pipe.predict(X_test)
+
+plt.figure(figsize=(15, 10))
+
+plt.subplot(2, 2, 1)
+sns.scatterplot(x=y_test, y=y_pred, alpha=0.6)
+p1 = max(max(y_pred), max(y_test))
+p2 = min(min(y_pred), min(y_test))
+plt.plot([p1, p2], [p1, p2], 'r-', linewidth=2)
+plt.xlabel('Actual Price')
+plt.ylabel('Predicted Price')
+plt.title('Actual vs Predicted Prices')
+plt.ticklabel_format(style='plain', axis='both')
+
+plt.subplot(2, 2, 2)
+residuals = y_test - y_pred
+sns.histplot(residuals, kde=True, color='orange')
+plt.title('Distribution of Prediction Errors')
+plt.xlabel('Prediction Error')
+plt.ticklabel_format(style='plain', axis='x')
+
+plt.subplot(2, 2, 3)
+sns.scatterplot(x=car['year'], y=car['Price'], alpha=0.5, color='green')
+plt.title('Price Distribution by Year')
+plt.ticklabel_format(style='plain', axis='y')
+
+plt.subplot(2, 2, 4)
+sns.scatterplot(x=car['kms_driven'], y=car['Price'], alpha=0.5, color='purple')
+plt.title('Price Distribution by Kms Driven')
+plt.ticklabel_format(style='plain', axis='both')
+
+plt.tight_layout()
+plt.show()
+
+input_data = pd.DataFrame([['Maruti Suzuki Swift', 'Maruti', 2019, 100, 'Petrol']],
+                          columns=['name', 'company', 'year', 'kms_driven', 'fuel_type'])
+
+predicted_price = pipe.predict(input_data)
+
+print(f"Prediction for Maruti Suzuki Swift (2019, 100km, Petrol): ₹{predicted_price[0]:,.2f}")
+print(f"Model Accuracy (R2 Score): {r2_score(y_test, y_pred):.2f}")
